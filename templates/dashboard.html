@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Dashboard • Checklists{% endblock %}
+{% block content %}
+<h1>Checklists</h1>
+<table>
+  <thead>
+    <tr>
+      <th style="width:40px">#</th>
+      <th>Título</th>
+      <th>Número</th>
+      <th>Responsável</th>
+      <th>Enviado</th>
+      <th>Recebido</th>
+      <th style="width:260px">Ações</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in ships %}
+    <tr>
+      <td class="muted">{{ loop.index }}</td>
+      <td>{{ s.title }}</td>
+      <td class="muted">{{ s.number or '—' }}</td>
+      <td class="muted">{{ s.responsible_email or '—' }}</td>
+      <td class="muted">{{ s.sent_at|dt }}</td>
+      <td class="muted">{{ s.received_at|dt }}</td>
+      <td>
+        <a class="btn" href="{{ url_for('detail', ship_id=s.id) }}">Detalhes</a>
+        <a class="btn secondary" href="{{ s.open_url() }}">Abrir link público</a>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not ships %}
+    <tr><td colspan="7" class="muted">Nenhum checklist ainda.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endblock %}

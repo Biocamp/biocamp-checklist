@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Validação • {{ ship.title }}{% endblock %}
+
+{% block content %}
+<h1>Validação do Checklist: {{ ship.title }}</h1>
+
+<p class="muted">
+  {% if g.viewer_name %}
+    Usuário: <strong>{{ g.viewer_name }} &lt;{{ g.viewer_email }}&gt;</strong>
+  {% else %}
+    Acesso como <strong>Convidado</strong>.
+  {% endif %}
+</p>
+
+{% if not can_edit and ship.responsible_email %}
+  <div class="muted" style="background:#f1f5f9;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px;margin-bottom:14px">
+    Visualização apenas. <strong>Somente o responsável ({{ ship.responsible_email }})</strong> pode confirmar.
+  </div>
+{% endif %}
+
+<form method="post" action="{{ url_for('open_public', token=ship.token) }}">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:80px">Confirmar</th>
+        <th>Item</th>
+        <th style="width:40%">Status</th>
+        <th style="width:160px">Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>
+          {% if can_edit and not it.confirmed_at %}
+            <input type="checkbox" name="items" value="{{ it.id }}">
+          {% else %}
+            <input type="checkbox" disabled>
+          {% endif %}
+        </td>
+        <td>{{ it.label }}</td>
+        <td class="muted">
+          {% if it.viewed_at %}
+            👁️ Visualizado por {{ it.viewed_by or '—' }} em {{ it.viewed_at|dt }}
+          {% else %}
+            Não visualizado
+          {% endif %}
+          <br>
+          {% if it.confirmed_at %}
+            ✅ Confirmado por <strong>{{ it.confirmed_by }}</strong> em {{ it.confirmed_at|dt }}
+          {% else %}
+            ⏳ Pendente
+          {% endif %}
+        </td>
+        <td>
+          {% if it.confirmed_at %}
+            <!-- Confirmação é definitiva: nenhuma ação disponível -->
+            <span class="muted">—</span>
+          {% else %}
+            <button class="btn success" type="submit" name="items" value="{{ it.id }}" {% if not can_edit %}disabled{% endif %}>
+              Confirmar
+            </button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="display:flex;gap:12px;margin-top:16px">
+    <button class="btn success" type="submit" name="bulk" value="selected" {% if not can_edit %}disabled{% endif %}>
+      Confirmar selecionados
+    </button>
+    <button class="btn" type="submit" name="confirm_all" value="1" {% if not can_edit %}disabled{% endif %}>
+      Confirmar todos
+    </button>
+  </div>
+</form>
+{% endblock %}

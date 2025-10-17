@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Novo Checklist</h1>
+<form method="post" enctype="multipart/form-data">
+  <label>Título:</label><br>
+  <input type="text" name="title" required><br><br>
+
+  <label>Número (opcional):</label><br>
+  <input type="text" name="number"><br><br>
+
+  <label>Email do Responsável:</label><br>
+  <input type="email" name="responsible_email" required><br><br>
+
+  <h3>Itens da Checklist <span class="muted" style="font-weight:normal">(opcional)</span></h3>
+  <div id="items-container">
+    <div class="item-row" style="margin-bottom:6px;">
+      <!-- removido required para ser opcional -->
+      <input type="text" name="items" placeholder="Digite o item (opcional)">
+      <button type="button" onclick="removeItem(this)">Remover</button>
+    </div>
+  </div>
+  <button type="button" onclick="addItem()">+ Adicionar Item</button>
+  <br><br>
+
+  <label>Imagens (opcional — pode enviar só imagens):</label><br>
+  <!-- name="images" é essencial para o backend -->
+  <input type="file" id="image-input" name="images" accept="image/*" multiple>
+  <div id="preview-container" style="margin-top:10px;"></div>
+
+  <!-- este hidden pode ficar ou ser removido; não é usado no backend atual -->
+  <input type="hidden" name="images_to_upload" id="images-to-upload">
+  <br><br>
+
+  <button type="submit" class="btn btn-primary">Criar Checklist</button>
+</form>
+
+<script>
+/* ---------------- Upload de imagens com preview e excluir ---------------- */
+let selectedImages = [];
+
+document.getElementById("image-input").addEventListener("change", function (event) {
+  const files = Array.from(event.target.files);
+  files.forEach(file => selectedImages.push(file));
+  renderPreview();
+});
+
+function renderPreview() {
+  const preview = document.getElementById("preview-container");
+  preview.innerHTML = "";
+
+  selectedImages.forEach((file, index) => {
+    const imgUrl = URL.createObjectURL(file);
+    const div = document.createElement("div");
+    div.style.marginBottom = "8px";
+
+    div.innerHTML = `
+      <img src="${imgUrl}" width="80" style="border:1px solid #ccc; margin-right:10px;">
+      <button type="button" onclick="removeImage(${index})">Excluir</button>
+    `;
+    preview.appendChild(div);
+  });
+
+  // Mantém o <input type="file"> sincronizado com a lista filtrada
+  const dt = new DataTransfer();
+  selectedImages.forEach(img => dt.items.add(img));
+  document.getElementById("image-input").files = dt.files;
+}
+
+function removeImage(index) {
+  selectedImages.splice(index, 1);
+  renderPreview();
+}
+
+/* ---------------- Itens da checklist: adicionar e remover ---------------- */
+function addItem() {
+  const container = document.getElementById("items-container");
+  const div = document.createElement("div");
+  div.className = "item-row";
+  div.style.marginBottom = "6px";
+
+  div.innerHTML = `
+    <input type="text" name="items" placeholder="Digite o item (opcional)">
+    <button type="button" onclick="removeItem(this)">Remover</button>
+  `;
+  container.appendChild(div);
+}
+
+function removeItem(button) {
+  const container = document.getElementById("items-container");
+  const rows = container.querySelectorAll(".item-row");
+
+  // Agora permite remover o último item (itens totalmente opcionais)
+  if (rows.length <= 1) {
+    button.parentElement.remove();
+    return;
+  }
+  button.parentElement.remove();
+}
+</script>
+{% endblock %}
