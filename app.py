@@ -1,6 +1,6 @@
 from flask import (
     Flask, render_template, request, redirect, url_for, session, flash,
-    abort, send_from_directory, current_app, g
+    abort, g
 )
 from datetime import datetime
 import sqlite3, os, uuid
@@ -10,15 +10,7 @@ app = Flask(__name__)
 app.secret_key = "altere_esta_chave"
 
 BASE_DIR = os.path.dirname(__file__)
-DB_PATH = os.path.join(BASE_DIR, "local.db")
-
-# ------------------------------ Upload Config ------------------------------
-app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-
-def allowed_file(filename: str) -> bool:
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "local.db"))
 
 # ------------------------------ DB helpers ------------------------------
 def get_conn():
@@ -27,9 +19,11 @@ def get_conn():
     return conn
 
 def rows_to_list(cur): return [dict(r) for r in cur.fetchall()]
+
 def row_or_none(cur):
     r = cur.fetchone()
     return dict(r) if r else None
+
 def now_iso(): return datetime.utcnow().isoformat(timespec="seconds")
 
 def ensure_schema():
@@ -70,15 +64,8 @@ def ensure_schema():
             user_agent TEXT,
             FOREIGN KEY(ship_id) REFERENCES ships(id) ON DELETE CASCADE
         )""")
-        c.execute("""
-        CREATE TABLE IF NOT EXISTS images (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ship_id INTEGER NOT NULL,
-            filename TEXT NOT NULL,
-            uploaded_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY(ship_id) REFERENCES ships(id) ON DELETE CASCADE
-        )""")
         c.commit()
+
 ensure_schema()
 
 # ------------------------------ Model ------------------------------
@@ -110,23 +97,22 @@ def fmt_dt(value):
     except Exception:
         return value
 
-# 🔹 Novo filtro: traduz códigos de evento
-@app.template_filter("evento_label")
-def evento_label(tipo: str):
-    """Traduz códigos internos de eventos para linguagem natural."""
-    mapping = {
-        "VIEW_OPEN": "Checklist aberto",
-        "AUTO_VIEWED_ITEMS": "Itens marcados como vistos automaticamente",
-        "CONFIRM_SELECTED": "Itens confirmados",
-        "CONFIRM_ALL": "Todos os itens confirmados",
-    }
-    return mapping.get(tipo, tipo)
-
-# ------------------------------ Context (expor g.viewer_*) -------------------
+# ------------------------------ User context (navbar) ----------------------
 @app.before_request
-def inject_viewer_in_g():
+def load_user_into_g():
     g.viewer_name = session.get("viewer_name")
     g.viewer_email = session.get("viewer_email")
+
+def current_user(): return session.get("viewer_email")
+
+def current_actor():
+    name = session.get("viewer_name")
+    email = session.get("viewer_email")
+    if email and name:
+        return f"{name} <{email}>"
+    if email:
+        return email
+    return "Convidado"
 
 # ------------------------------ Auth ------------------------------
 @app.get("/login")
@@ -153,14 +139,6 @@ def logout():
     session.pop("viewer_name", None)
     flash("Você saiu da identificação.", "success")
     return redirect(url_for("login_get"))
-
-def current_user(): return session.get("viewer_email")
-def current_actor(): return f"{session.get('viewer_name')} <{session.get('viewer_email')}>"
-
-# ------------------------------ Uploads (servir arquivos) --------------------
-@app.route('/uploads/<path:filename>')
-def uploaded_file(filename):
-    return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
 
 # ------------------------------ Public (open) ------------------------------
 @app.route("/open/<token>", methods=["GET", "POST"])
@@ -195,7 +173,7 @@ def open_public(token):
             flash("Nenhum item selecionado.", "error")
         return redirect(url_for("open_public", token=token))
 
-    # GET: marca visualizado
+    # GET: marca visualizado na primeira visita
     flag_key = f"viewed_flag_ship_{ship.id}"
     if not session.get(flag_key, False):
         items_once = list_items_for_ship(ship.id)
@@ -207,10 +185,17 @@ def open_public(token):
         session[flag_key] = True
 
     items = list_items_for_ship(ship.id)
-    gallery = fetch_images_for_ship(ship.id)
     add_event(ship.id, actor, "VIEW_OPEN", request.remote_addr, request.user_agent.string)
-    return render_template("public_validation.html", ship=ship, items=items,
-                           actor=actor, can_edit=can_edit, gallery=gallery)
+    return render_template("open.html", ship=ship, items=items, actor=actor, can_edit=can_edit)
+
+# rota de desconfirmação agora bloqueada (irreversível)
+@app.post("/open/<token>/unconfirm/<int:item_id>")
+def unconfirm_item_route(token, item_id):
+    ship = get_ship_by_token(token)
+    if not ship: abort(404)
+    flash("Desconfirmar não é permitido neste checklist.", "error")
+    session[f"viewed_flag_ship_{ship.id}"] = True
+    return redirect(url_for("open_public", token=token))
 
 # ------------------------------ Internal screens ------------------------------
 @app.get("/")
@@ -222,38 +207,21 @@ def dashboard():
 def new_shipment():
     if request.method == "GET":
         return render_template("new.html")
-
     title = (request.form.get("title") or "").strip() or "Checklist"
     number = (request.form.get("number") or "").strip() or None
     responsible = (request.form.get("responsible_email") or "").strip().lower() or None
     token = uuid.uuid4().hex
     items = request.form.getlist("items")
-    files = request.files.getlist("images")
-
     with get_conn() as c:
         c.execute("""INSERT INTO ships (title, number, status, sent_at, token, responsible_email)
                      VALUES (?, ?, ?, ?, ?, ?)""",
                   (title, number, "ENVIADO", now_iso(), token, responsible))
         ship_id = c.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-        # cria itens de texto (se houver)
         for label in items:
             if label.strip():
-                c.execute("""INSERT INTO items (ship_id, label, external_url)
-                             VALUES (?, ?, ?)""", (ship_id, label.strip(), None))
+                c.execute("""INSERT INTO items (ship_id, label, external_url) VALUES (?, ?, ?)""",
+                          (ship_id, label.strip(), None))
         c.commit()
-
-    # salva imagens e cria itens correspondentes
-    filenames = save_images_for_ship(ship_id, files)
-    if filenames:
-        with get_conn() as c:
-            for fn in filenames:
-                label = f"Foto: {fn}"
-                external_url = f"/uploads/{fn}"
-                c.execute("""INSERT INTO items (ship_id, label, external_url)
-                             VALUES (?, ?, ?)""", (ship_id, label, external_url))
-            c.commit()
-
     flash("Checklist criada com sucesso.", "success")
     return redirect(url_for("detail", ship_id=ship_id))
 
@@ -263,34 +231,20 @@ def detail(ship_id: int):
     if not ship: abort(404)
     items = list_items_for_ship(ship.id)
     events = list_events_for_ship(ship.id)
-    gallery = fetch_images_for_ship(ship.id)
-    return render_template("detail.html", ship=ship, items=items, events=events, gallery=gallery)
+    return render_template("detail.html", ship=ship, items=items, events=events)
 
-# ------------------------------ Upload helpers ------------------------------
-def save_images_for_ship(ship_id: int, files):
-    """Salva imagens e retorna a lista de nomes salvos."""
-    saved = []
-    if not files:
-        return saved
+@app.post("/ship/<int:ship_id>/add_item")
+def add_item(ship_id: int):
+    label = (request.form.get("label") or "").strip()
+    if not label:
+        flash("O item não pode estar vazio.", "error")
+        return redirect(url_for("detail", ship_id=ship_id))
     with get_conn() as c:
-        for f in files:
-            if not f or f.filename == "":
-                continue
-            if not allowed_file(f.filename):
-                continue
-            ext = f.filename.rsplit(".", 1)[1].lower()
-            unique = f"{uuid.uuid4().hex}.{ext}"
-            path = os.path.join(current_app.config["UPLOAD_FOLDER"], unique)
-            f.save(path)
-            c.execute("INSERT INTO images (ship_id, filename) VALUES (?, ?)", (ship_id, unique))
-            saved.append(unique)
+        c.execute("""INSERT INTO items (ship_id, label, external_url) VALUES (?, ?, ?)""",
+                  (ship_id, label, None))
         c.commit()
-    return saved
-
-def fetch_images_for_ship(ship_id: int) -> list[dict]:
-    with get_conn() as c:
-        cur = c.execute("SELECT id, filename FROM images WHERE ship_id=? ORDER BY id", (ship_id,))
-        return rows_to_list(cur)
+    flash("Item adicionado com sucesso.", "success")
+    return redirect(url_for("detail", ship_id=ship_id))
 
 # ------------------------------ DAO ------------------------------
 def get_ship_by_token(token: str) -> Optional[Ship]:
@@ -370,4 +324,5 @@ def list_events_for_ship(ship_id: int) -> list[dict]:
 
 # ------------------------------ Main ------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)

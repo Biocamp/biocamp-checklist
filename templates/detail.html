@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block title %}Detalhes • {{ ship.title }}{% endblock %}
-
 {% block content %}
 <h1>Checklist: {{ ship.title }}</h1>
 <p class="muted">
@@ -10,22 +9,7 @@
   Recebido: {{ ship.received_at|dt }}<br>
   Responsável: {{ ship.responsible_email or '—' }}
 </p>
-
-{% if gallery and gallery|length > 0 %}
-  <h3>Imagens anexadas</h3>
-  <div style="margin:8px 0 16px; display:flex; gap:10px; flex-wrap:wrap">
-    {% for gimg in gallery %}
-      <a href="{{ url_for('uploaded_file', filename=gimg.filename) }}" target="_blank" rel="noopener" title="ver anexo">
-        <img src="{{ url_for('uploaded_file', filename=gimg.filename) }}"
-             alt="anexo" style="width:110px;height:85px;object-fit:cover;border:1px solid #e2e8f0;border-radius:6px;">
-      </a>
-    {% endfor %}
-  </div>
-{% endif %}
-
-<p>
-  <a class="btn secondary" href="{{ ship.open_url() }}">Abrir checklist público</a>
-</p>
+<p><a class="btn secondary" href="{{ ship.open_url() }}">Abrir checklist público</a></p>
 
 <h2>Itens</h2>
 <table>
@@ -33,8 +17,8 @@
     <tr>
       <th style="width:36px">#</th>
       <th>Item</th>
-      <th style="width:25%">Visto</th>
-      <th style="width:25%">Confirmado</th>
+      <th style="width:32%">Visualizado</th>
+      <th style="width:32%">Confirmado</th>
     </tr>
   </thead>
   <tbody>
@@ -43,18 +27,10 @@
       <td class="muted">{{ loop.index }}</td>
       <td>{{ it.label }}</td>
       <td class="muted">
-        {% if it.viewed_at %}
-          {{ it.viewed_at|dt }}<br><small>{{ it.viewed_by }}</small>
-        {% else %}
-          <span class="muted">Ainda não visto</span>
-        {% endif %}
+        {% if it.viewed_at %}👁️ {{ it.viewed_at|dt }}<br><small>{{ it.viewed_by }}</small>{% else %}—{% endif %}
       </td>
       <td class="muted">
-        {% if it.confirmed_at %}
-          ✔️ {{ it.confirmed_at|dt }}<br><small>{{ it.confirmed_by }}</small>
-        {% else %}
-          🕓 Aguardando confirmação
-        {% endif %}
+        {% if it.confirmed_at %}✅ {{ it.confirmed_at|dt }}<br><small>{{ it.confirmed_by }}</small>{% else %}⏳ Pendente{% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -67,7 +43,7 @@
     <tr>
       <th style="width:200px">Quando</th>
       <th style="width:260px">Quem</th>
-      <th>O quê</th>
+      <th>Tipo</th>
       <th class="muted">IP / Agent</th>
     </tr>
   </thead>
@@ -76,7 +52,7 @@
     <tr>
       <td>{{ ev.ts|dt }}</td>
       <td class="muted">{{ ev.actor or '—' }}</td>
-      <td><strong>{{ ev.type|evento_label }}</strong></td>
+      <td><strong>{{ ev.type }}</strong></td>
       <td class="muted"><small>{{ ev.ip or '-' }} • {{ ev.user_agent or '-' }}</small></td>
     </tr>
     {% endfor %}

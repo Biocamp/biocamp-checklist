@@ -1,12 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Validação • {{ ship.title }}{% endblock %}
-
 {% block content %}
 <h1>Validação do Checklist: {{ ship.title }}</h1>
-
 <p class="muted">
-  {% if g.viewer_name %}
-    Usuário: <strong>{{ g.viewer_name }} &lt;{{ g.viewer_email }}&gt;</strong>
+  {% if g.viewer_email %}
+    Usuário: <strong>{{ g.viewer_name or 'Usuário' }} &lt;{{ g.viewer_email }}&gt;</strong>
   {% else %}
     Acesso como <strong>Convidado</strong>.
   {% endif %}
@@ -44,8 +42,7 @@
             👁️ Visualizado por {{ it.viewed_by or '—' }} em {{ it.viewed_at|dt }}
           {% else %}
             Não visualizado
-          {% endif %}
-          <br>
+          {% endif %}<br>
           {% if it.confirmed_at %}
             ✅ Confirmado por <strong>{{ it.confirmed_by }}</strong> em {{ it.confirmed_at|dt }}
           {% else %}
@@ -54,10 +51,9 @@
         </td>
         <td>
           {% if it.confirmed_at %}
-            <!-- Confirmação é definitiva: nenhuma ação disponível -->
             <span class="muted">—</span>
           {% else %}
-            <button class="btn success" type="submit" name="items" value="{{ it.id }}" {% if not can_edit %}disabled{% endif %}>
+            <button class="btn" style="background:#22c55e" type="submit" name="items" value="{{ it.id }}" {% if not can_edit %}disabled{% endif %}>
               Confirmar
             </button>
           {% endif %}
@@ -68,7 +64,7 @@
   </table>
 
   <div style="display:flex;gap:12px;margin-top:16px">
-    <button class="btn success" type="submit" name="bulk" value="selected" {% if not can_edit %}disabled{% endif %}>
+    <button class="btn" style="background:#22c55e" type="submit" name="bulk" value="selected" {% if not can_edit %}disabled{% endif %}>
       Confirmar selecionados
     </button>
     <button class="btn" type="submit" name="confirm_all" value="1" {% if not can_edit %}disabled{% endif %}>
