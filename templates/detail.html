@@ -1,6 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Detalhes • {{ ship.title }}{% endblock %}
+
 {% block content %}
+<div class="navbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+  <div>
+    <a href="{{ url_for('dashboard') }}" class="btn secondary">🏠 Dashboard</a>
+    <a href="{{ url_for('new_shipment') }}" class="btn secondary">＋ Novo Checklist</a>
+    <a href="javascript:history.back()" class="btn secondary">↩️ Voltar</a>
+  </div>
+  <div>
+    {% if g.viewer_email %}
+      <span style="margin-right:10px">{{ g.viewer_name or '' }} &lt;{{ g.viewer_email }}&gt;</span>
+      <a href="{{ url_for('logout') }}" class="btn danger">Sair</a>
+    {% else %}
+      <a href="{{ url_for('login_get') }}" class="btn">Entrar</a>
+    {% endif %}
+  </div>
+</div>
+
 <h1>Checklist: {{ ship.title }}</h1>
 <p class="muted">
   Número: {{ ship.number or '—' }} •
@@ -9,70 +26,101 @@
   Recebido: {{ ship.received_at|dt }}<br>
   Responsável: {{ ship.responsible_email or '—' }}
 </p>
-<p><a class="btn secondary" href="{{ ship.open_url() }}">Abrir checklist público</a></p>
+
+<p>
+  <a class="btn" href="{{ ship.open_url() }}" target="_blank">🔗 Abrir checklist público</a>
+</p>
 
 <h2>Itens</h2>
-<table>
-  <thead>
+<table style="width:100%;border-collapse:collapse;margin-top:10px">
+  <thead style="background:#f8fafc">
     <tr>
-      <th style="width:36px">#</th>
-      <th>Item</th>
-      <th style="width:24%">Imagem</th>
-      <th style="width:22%">Visualizado</th>
-      <th style="width:22%">Confirmado</th>
+      <th style="padding:8px;width:36px">#</th>
+      <th style="padding:8px;text-align:left">Item</th>
+      <th style="padding:8px;text-align:left;width:28%">Imagem</th>
+      <th style="padding:8px;text-align:left;width:20%">Visualizado</th>
+      <th style="padding:8px;text-align:left;width:20%">Confirmado</th>
     </tr>
   </thead>
   <tbody>
     {% for it in items %}
-    <tr>
-      <td class="muted">{{ loop.index }}</td>
-      <td>{{ it.label }}</td>
-      <td>
+    <tr style="border-top:1px solid #e2e8f0">
+      <td class="muted" style="padding:8px;text-align:center">{{ loop.index }}</td>
+      <td style="padding:8px">{{ it.label }}</td>
+      <td style="padding:8px">
         {% if it.image_path %}
-          <img src="{{ url_for('static', filename=it.image_path) }}" alt="imagem" style="max-width:140px;border-radius:8px;display:block;margin-bottom:6px">
-          <form method="post" action="{{ url_for('remove_item_image', ship_id=ship.id, item_id=it.id) }}">
-            <button class="btn secondary" type="submit">Remover imagem</button>
-          </form>
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+            <img src="{{ url_for('static', filename=it.image_path) }}"
+                 alt="imagem" style="max-width:160px;border-radius:8px;border:1px solid #ddd">
+            <form method="post"
+                  action="{{ url_for('remove_item_image', ship_id=ship.id, item_id=it.id) }}">
+              <button class="btn secondary" type="submit">Remover imagem</button>
+            </form>
+          </div>
         {% else %}
-          <form method="post" enctype="multipart/form-data" action="{{ url_for('upload_item_image', ship_id=ship.id, item_id=it.id) }}">
+          <form method="post" enctype="multipart/form-data"
+                action="{{ url_for('upload_item_image', ship_id=ship.id, item_id=it.id) }}"
+                style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
             <input type="file" name="image" accept="image/*" required>
             <button class="btn" type="submit">Anexar</button>
           </form>
-          <div class="muted" style="font-size:12px;margin-top:6px">png, jpg, jpeg, webp, gif • até 8MB</div>
+          <div class="muted" style="font-size:12px;margin-top:6px">
+            png, jpg, jpeg, webp, gif • até 8MB
+          </div>
         {% endif %}
       </td>
-      <td class="muted">
-        {% if it.viewed_at %}👁️ {{ it.viewed_at|dt }}<br><small>{{ it.viewed_by }}</small>{% else %}—{% endif %}
+      <td class="muted" style="padding:8px">
+        {% if it.viewed_at %}
+          👁️ {{ it.viewed_at|dt }}<br>
+          <small>{{ it.viewed_by }}</small>
+        {% else %}
+          —
+        {% endif %}
       </td>
-      <td class="muted">
-        {% if it.confirmed_at %}✅ {{ it.confirmed_at|dt }}<br><small>{{ it.confirmed_by }}</small>{% else %}⏳ Pendente{% endif %}
+      <td class="muted" style="padding:8px">
+        {% if it.confirmed_at %}
+          ✅ {{ it.confirmed_at|dt }}<br>
+          <small>{{ it.confirmed_by }}</small>
+        {% else %}
+          ⏳ Pendente
+        {% endif %}
       </td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
-<h2 style="margin-top:22px">Timeline de eventos</h2>
-<table>
-  <thead>
+<!-- Adicionar novo item -->
+<form method="post" action="{{ url_for('add_item', ship_id=ship.id) }}"
+      style="margin-top:20px;display:flex;gap:10px;align-items:center">
+  <input type="text" name="label" placeholder="Novo item" required
+         style="flex:1;padding:8px;border-radius:6px;border:1px solid #ccc">
+  <button class="btn" type="submit">Adicionar item</button>
+</form>
+
+<h2 style="margin-top:32px">📜 Timeline de eventos</h2>
+<table style="width:100%;border-collapse:collapse;margin-top:10px">
+  <thead style="background:#f8fafc">
     <tr>
-      <th style="width:200px">Quando</th>
-      <th style="width:260px">Quem</th>
-      <th>Tipo</th>
-      <th class="muted">IP / Agent</th>
+      <th style="padding:8px;width:180px;text-align:left">Quando</th>
+      <th style="padding:8px;width:260px;text-align:left">Quem</th>
+      <th style="padding:8px;text-align:left">Tipo</th>
+      <th style="padding:8px;text-align:left">IP / Agent</th>
     </tr>
   </thead>
   <tbody>
     {% for ev in events %}
-    <tr>
-      <td>{{ ev.ts|dt }}</td>
-      <td class="muted">{{ ev.actor or '—' }}</td>
-      <td><strong>{{ ev.type }}</strong></td>
-      <td class="muted"><small>{{ ev.ip or '-' }} • {{ ev.user_agent or '-' }}</small></td>
+    <tr style="border-top:1px solid #e2e8f0">
+      <td style="padding:8px">{{ ev.ts|dt }}</td>
+      <td style="padding:8px" class="muted">{{ ev.actor or '—' }}</td>
+      <td style="padding:8px"><strong>{{ ev.type }}</strong></td>
+      <td style="padding:8px" class="muted">
+        <small>{{ ev.ip or '-' }} • {{ ev.user_agent or '-' }}</small>
+      </td>
     </tr>
     {% endfor %}
     {% if not events %}
-    <tr><td colspan="4" class="muted">Sem eventos ainda.</td></tr>
+    <tr><td colspan="4" class="muted" style="padding:8px">Sem eventos ainda.</td></tr>
     {% endif %}
   </tbody>
 </table>
