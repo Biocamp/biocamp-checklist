@@ -17,8 +17,9 @@
     <tr>
       <th style="width:36px">#</th>
       <th>Item</th>
-      <th style="width:32%">Visualizado</th>
-      <th style="width:32%">Confirmado</th>
+      <th style="width:24%">Imagem</th>
+      <th style="width:22%">Visualizado</th>
+      <th style="width:22%">Confirmado</th>
     </tr>
   </thead>
   <tbody>
@@ -26,6 +27,20 @@
     <tr>
       <td class="muted">{{ loop.index }}</td>
       <td>{{ it.label }}</td>
+      <td>
+        {% if it.image_path %}
+          <img src="{{ url_for('static', filename=it.image_path) }}" alt="imagem" style="max-width:140px;border-radius:8px;display:block;margin-bottom:6px">
+          <form method="post" action="{{ url_for('remove_item_image', ship_id=ship.id, item_id=it.id) }}">
+            <button class="btn secondary" type="submit">Remover imagem</button>
+          </form>
+        {% else %}
+          <form method="post" enctype="multipart/form-data" action="{{ url_for('upload_item_image', ship_id=ship.id, item_id=it.id) }}">
+            <input type="file" name="image" accept="image/*" required>
+            <button class="btn" type="submit">Anexar</button>
+          </form>
+          <div class="muted" style="font-size:12px;margin-top:6px">png, jpg, jpeg, webp, gif • até 8MB</div>
+        {% endif %}
+      </td>
       <td class="muted">
         {% if it.viewed_at %}👁️ {{ it.viewed_at|dt }}<br><small>{{ it.viewed_by }}</small>{% else %}—{% endif %}
       </td>

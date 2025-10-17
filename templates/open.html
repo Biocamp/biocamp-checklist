@@ -22,8 +22,9 @@
       <tr>
         <th style="width:80px">Confirmar</th>
         <th>Item</th>
-        <th style="width:40%">Status</th>
-        <th style="width:160px">Ações</th>
+        <th style="width:30%">Imagem</th>
+        <th style="width:30%">Status</th>
+        <th style="width:140px">Ações</th>
       </tr>
     </thead>
     <tbody>
@@ -37,6 +38,13 @@
           {% endif %}
         </td>
         <td>{{ it.label }}</td>
+        <td>
+          {% if it.image_path %}
+            <img src="{{ url_for('static', filename=it.image_path) }}" alt="imagem" style="max-width:180px;border-radius:8px">
+          {% else %}
+            <span class="muted">Sem imagem</span>
+          {% endif %}
+        </td>
         <td class="muted">
           {% if it.viewed_at %}
             👁️ Visualizado por {{ it.viewed_by or '—' }} em {{ it.viewed_at|dt }}

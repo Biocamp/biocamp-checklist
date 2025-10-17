@@ -5,12 +5,23 @@ from flask import (
 from datetime import datetime
 import sqlite3, os, uuid
 from typing import Optional, Iterable
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = "altere_esta_chave"
 
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "local.db"))
+
+# -------- Uploads --------
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8MB
+ALLOWED_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
+
+def allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTS
 
 # ------------------------------ DB helpers ------------------------------
 def get_conn():
@@ -51,6 +62,7 @@ def ensure_schema():
             confirmed_by TEXT,
             viewed_at TEXT,
             viewed_by TEXT,
+            image_path TEXT,
             FOREIGN KEY(ship_id) REFERENCES ships(id) ON DELETE CASCADE
         )""")
         c.execute("""
@@ -66,7 +78,16 @@ def ensure_schema():
         )""")
         c.commit()
 
+def ensure_column(table: str, column: str, coltype: str):
+    with get_conn() as c:
+        cols = [r["name"] for r in c.execute(f"PRAGMA table_info({table})")]
+        if column not in cols:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+            c.commit()
+
 ensure_schema()
+# migração leve para imagem
+ensure_column("items", "image_path", "TEXT")
 
 # ------------------------------ Model ------------------------------
 class Ship:
@@ -163,6 +184,7 @@ def open_public(token):
             flash("Todos os itens foram confirmados.", "success")
             return redirect(url_for("open_public", token=token))
 
+        # confirmar selecionados (apenas os não confirmados)
         ids = [int(x) for x in request.form.getlist("items") if x.isdigit()]
         if ids:
             confirm_selected_items(ship.id, ids, actor)
@@ -188,7 +210,7 @@ def open_public(token):
     add_event(ship.id, actor, "VIEW_OPEN", request.remote_addr, request.user_agent.string)
     return render_template("open.html", ship=ship, items=items, actor=actor, can_edit=can_edit)
 
-# rota de desconfirmação agora bloqueada (irreversível)
+# desconfirmação bloqueada
 @app.post("/open/<token>/unconfirm/<int:item_id>")
 def unconfirm_item_route(token, item_id):
     ship = get_ship_by_token(token)
@@ -222,7 +244,7 @@ def new_shipment():
                 c.execute("""INSERT INTO items (ship_id, label, external_url) VALUES (?, ?, ?)""",
                           (ship_id, label.strip(), None))
         c.commit()
-    flash("Checklist criada com sucesso.", "success")
+    flash("Checklist criada com sucesso. Você pode anexar imagens aos itens na tela de Detalhes.", "success")
     return redirect(url_for("detail", ship_id=ship_id))
 
 @app.get("/ship/<int:ship_id>")
@@ -244,6 +266,48 @@ def add_item(ship_id: int):
                   (ship_id, label, None))
         c.commit()
     flash("Item adicionado com sucesso.", "success")
+    return redirect(url_for("detail", ship_id=ship_id))
+
+# --------- Upload/Remoção de Imagem por Item ---------
+@app.post("/ship/<int:ship_id>/item/<int:item_id>/upload_image")
+def upload_item_image(ship_id: int, item_id: int):
+    file = request.files.get("image")
+    if not file or file.filename == "":
+        flash("Selecione um arquivo de imagem.", "error")
+        return redirect(url_for("detail", ship_id=ship_id))
+    if not allowed_file(file.filename):
+        flash("Formato inválido. Use png, jpg, jpeg, webp ou gif.", "error")
+        return redirect(url_for("detail", ship_id=ship_id))
+
+    # nome único
+    ext = file.filename.rsplit(".", 1)[1].lower()
+    fname = secure_filename(f"{uuid.uuid4().hex}.{ext}")
+    save_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+    file.save(save_path)
+
+    rel_path = f"uploads/{fname}"  # relativo a /static
+    with get_conn() as c:
+        c.execute("""UPDATE items SET image_path=? WHERE id=? AND ship_id=?""",
+                  (rel_path, item_id, ship_id))
+        c.commit()
+    flash("Imagem anexada ao item.", "success")
+    return redirect(url_for("detail", ship_id=ship_id))
+
+@app.post("/ship/<int:ship_id>/item/<int:item_id>/remove_image")
+def remove_item_image(ship_id: int, item_id: int):
+    with get_conn() as c:
+        row = c.execute("""SELECT image_path FROM items WHERE id=? AND ship_id=?""",
+                        (item_id, ship_id)).fetchone()
+        if row and row["image_path"]:
+            fpath = os.path.join(BASE_DIR, "static", row["image_path"])
+            try:
+                if os.path.exists(fpath): os.remove(fpath)
+            except Exception:
+                pass
+            c.execute("""UPDATE items SET image_path=NULL WHERE id=? AND ship_id=?""",
+                      (item_id, ship_id))
+            c.commit()
+    flash("Imagem removida do item.", "success")
     return redirect(url_for("detail", ship_id=ship_id))
 
 # ------------------------------ DAO ------------------------------
