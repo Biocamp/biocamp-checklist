@@ -6,9 +6,21 @@ from datetime import datetime
 import sqlite3, os, uuid
 from typing import Optional, Iterable
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import RequestEntityTooLarge
 
 app = Flask(__name__)
 app.secret_key = "altere_esta_chave"
+
+# ---- recarregar templates e evitar cache (garante que o detail.html novo apareça) ----
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
+
+@app.after_request
+def add_header_no_cache(resp):
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "local.db"))
@@ -385,6 +397,16 @@ def list_events_for_ship(ship_id: int) -> list[dict]:
     with get_conn() as c:
         cur = c.execute("SELECT * FROM events WHERE ship_id=? ORDER BY ts DESC", (ship_id,))
         return rows_to_list(cur)
+
+# ------------------------------ Errors ------------------------------
+@app.errorhandler(RequestEntityTooLarge)
+def handle_large_file(e):
+    flash("Imagem muito grande (máx. 8MB).", "error")
+    # tentar voltar para a última tela de detalhe conhecida:
+    referer = request.headers.get("Referer")
+    if referer and "/ship/" in referer:
+        return redirect(referer)
+    return redirect(url_for("dashboard"))
 
 # ------------------------------ Main ------------------------------
 if __name__ == "__main__":
