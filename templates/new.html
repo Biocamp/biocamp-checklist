@@ -2,7 +2,7 @@
 {% block title %}Novo Checklist{% endblock %}
 {% block content %}
 <h1>Novo Checklist</h1>
-<form method="post">
+<form method="post" enctype="multipart/form-data">
   <label>Título</label><br>
   <input name="title" type="text" required style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px" placeholder="Ex.: Apresentação Contec"><br><br>
 
@@ -14,6 +14,14 @@
 
   <label>Itens (um por linha)</label><br>
   <textarea name="items" rows="6" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px" placeholder="Documento 1&#10;Documento 2&#10;Documento 3"></textarea><br><br>
+
+  <!-- Upload múltiplo de imagens na mesma ordem das linhas -->
+  <label>Imagens (opcional) — na mesma ordem dos itens</label><br>
+  <input type="file" name="item_images" accept="image/*" multiple>
+  <div class="muted" style="font-size:12px;margin-top:6px">
+    png, jpg, jpeg, webp, gif • até 8MB (total) • 1ª imagem → 1º item, 2ª → 2º item, e assim por diante.
+  </div>
+  <br>
 
   <script>
     // transforma textarea em lista de inputs "items" na submissão

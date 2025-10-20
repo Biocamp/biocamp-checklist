@@ -11,7 +11,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 app = Flask(__name__)
 app.secret_key = "altere_esta_chave"
 
-# ---- recarregar templates e evitar cache (garante que o detail.html novo apareça) ----
+# ---- recarregar templates e evitar cache ----
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
@@ -98,7 +98,6 @@ def ensure_column(table: str, column: str, coltype: str):
             c.commit()
 
 ensure_schema()
-# migração leve para imagem
 ensure_column("items", "image_path", "TEXT")
 
 # ------------------------------ Model ------------------------------
@@ -196,7 +195,6 @@ def open_public(token):
             flash("Todos os itens foram confirmados.", "success")
             return redirect(url_for("open_public", token=token))
 
-        # confirmar selecionados (apenas os não confirmados)
         ids = [int(x) for x in request.form.getlist("items") if x.isdigit()]
         if ids:
             confirm_selected_items(ship.id, ids, actor)
@@ -207,7 +205,7 @@ def open_public(token):
             flash("Nenhum item selecionado.", "error")
         return redirect(url_for("open_public", token=token))
 
-    # GET: marca visualizado na primeira visita
+    # GET: primeira visita marca visualizado
     flag_key = f"viewed_flag_ship_{ship.id}"
     if not session.get(flag_key, False):
         items_once = list_items_for_ship(ship.id)
@@ -222,7 +220,6 @@ def open_public(token):
     add_event(ship.id, actor, "VIEW_OPEN", request.remote_addr, request.user_agent.string)
     return render_template("open.html", ship=ship, items=items, actor=actor, can_edit=can_edit)
 
-# desconfirmação bloqueada
 @app.post("/open/<token>/unconfirm/<int:item_id>")
 def unconfirm_item_route(token, item_id):
     ship = get_ship_by_token(token)
@@ -246,8 +243,8 @@ def new_shipment():
     number = (request.form.get("number") or "").strip() or None
     responsible = (request.form.get("responsible_email") or "").strip().lower() or None
     token = uuid.uuid4().hex
-    items = request.form.getlist("items")  # já vem do JS do new.html
-    files = request.files.getlist("item_images")  # múltiplas imagens opcionais (ordem = linhas)
+    items = request.form.getlist("items")
+    files = request.files.getlist("item_images")  # múltiplas imagens opcionais
 
     with get_conn() as c:
         c.execute("""INSERT INTO ships (title, number, status, sent_at, token, responsible_email)
@@ -259,12 +256,10 @@ def new_shipment():
             if not label.strip():
                 continue
 
-            # cria o item primeiro
             c.execute("""INSERT INTO items (ship_id, label, external_url) VALUES (?, ?, ?)""",
                       (ship_id, label.strip(), None))
             item_id = c.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
-            # tenta associar a imagem correspondente (mesma ordem das linhas)
             image_path = None
             if idx < len(files):
                 f = files[idx]
@@ -276,7 +271,6 @@ def new_shipment():
                         f.save(save_path)
                         image_path = f"uploads/{fname}"
                     else:
-                        # extensão inválida para este índice
                         flash(f"Formato inválido na imagem do item {idx+1}. Use png, jpg, jpeg, webp ou gif.", "error")
 
             if image_path:
@@ -284,7 +278,7 @@ def new_shipment():
 
         c.commit()
 
-    flash("Checklist criada com sucesso. As imagens anexadas foram vinculadas na ordem dos itens.", "success")
+    flash("Checklist criada com sucesso. As imagens foram vinculadas na ordem dos itens.", "success")
     return redirect(url_for("detail", ship_id=ship_id))
 
 @app.get("/ship/<int:ship_id>")
@@ -308,14 +302,7 @@ def add_item(ship_id: int):
     flash("Item adicionado com sucesso.", "success")
     return redirect(url_for("detail", ship_id=ship_id))
 
-# --------- Upload/Remoção de Imagem por Item ---------
-# Mantido para compatibilidade, mas a adição de imagem deve ser feita apenas na tela de criação (new).
-@app.post("/ship/<int:ship_id>/item/<int:item_id>/upload_image")
-def upload_item_image(ship_id: int, item_id: int):
-    # Opcionalmente, você pode bloquear:
-    flash("Anexar imagem só é permitido durante a criação da checklist.", "error")
-    return redirect(url_for("detail", ship_id=ship_id))
-
+# --------- Remoção de Imagem por Item (permitida após criação) ---------
 @app.post("/ship/<int:ship_id>/item/<int:item_id>/remove_image")
 def remove_item_image(ship_id: int, item_id: int):
     with get_conn() as c:
@@ -413,7 +400,6 @@ def list_events_for_ship(ship_id: int) -> list[dict]:
 @app.errorhandler(RequestEntityTooLarge)
 def handle_large_file(e):
     flash("Imagem muito grande (máx. 8MB).", "error")
-    # tentar voltar para a última tela de detalhe conhecida:
     referer = request.headers.get("Referer")
     if referer and "/ship/" in referer:
         return redirect(referer)
