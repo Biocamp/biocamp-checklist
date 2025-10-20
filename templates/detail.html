@@ -58,14 +58,9 @@
             </form>
           </div>
         {% else %}
-          <form method="post" enctype="multipart/form-data"
-                action="{{ url_for('upload_item_image', ship_id=ship.id, item_id=it.id) }}"
-                style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
-            <input type="file" name="image" accept="image/*" required>
-            <button class="btn" type="submit">Anexar</button>
-          </form>
+          <!-- Não permitir anexar aqui: apenas durante a criação -->
           <div class="muted" style="font-size:12px;margin-top:6px">
-            png, jpg, jpeg, webp, gif • até 8MB
+            Sem imagem (anexar somente na criação do checklist).
           </div>
         {% endif %}
       </td>

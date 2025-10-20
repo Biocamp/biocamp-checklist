@@ -241,22 +241,50 @@ def dashboard():
 def new_shipment():
     if request.method == "GET":
         return render_template("new.html")
+
     title = (request.form.get("title") or "").strip() or "Checklist"
     number = (request.form.get("number") or "").strip() or None
     responsible = (request.form.get("responsible_email") or "").strip().lower() or None
     token = uuid.uuid4().hex
-    items = request.form.getlist("items")
+    items = request.form.getlist("items")  # já vem do JS do new.html
+    files = request.files.getlist("item_images")  # múltiplas imagens opcionais (ordem = linhas)
+
     with get_conn() as c:
         c.execute("""INSERT INTO ships (title, number, status, sent_at, token, responsible_email)
                      VALUES (?, ?, ?, ?, ?, ?)""",
                   (title, number, "ENVIADO", now_iso(), token, responsible))
         ship_id = c.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-        for label in items:
-            if label.strip():
-                c.execute("""INSERT INTO items (ship_id, label, external_url) VALUES (?, ?, ?)""",
-                          (ship_id, label.strip(), None))
+
+        for idx, label in enumerate(items):
+            if not label.strip():
+                continue
+
+            # cria o item primeiro
+            c.execute("""INSERT INTO items (ship_id, label, external_url) VALUES (?, ?, ?)""",
+                      (ship_id, label.strip(), None))
+            item_id = c.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+            # tenta associar a imagem correspondente (mesma ordem das linhas)
+            image_path = None
+            if idx < len(files):
+                f = files[idx]
+                if f and getattr(f, "filename", ""):
+                    if allowed_file(f.filename):
+                        ext = f.filename.rsplit(".", 1)[1].lower()
+                        fname = secure_filename(f"{uuid.uuid4().hex}.{ext}")
+                        save_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+                        f.save(save_path)
+                        image_path = f"uploads/{fname}"
+                    else:
+                        # extensão inválida para este índice
+                        flash(f"Formato inválido na imagem do item {idx+1}. Use png, jpg, jpeg, webp ou gif.", "error")
+
+            if image_path:
+                c.execute("""UPDATE items SET image_path=? WHERE id=?""", (image_path, item_id))
+
         c.commit()
-    flash("Checklist criada com sucesso. Você pode anexar imagens aos itens na tela de Detalhes.", "success")
+
+    flash("Checklist criada com sucesso. As imagens anexadas foram vinculadas na ordem dos itens.", "success")
     return redirect(url_for("detail", ship_id=ship_id))
 
 @app.get("/ship/<int:ship_id>")
@@ -281,28 +309,11 @@ def add_item(ship_id: int):
     return redirect(url_for("detail", ship_id=ship_id))
 
 # --------- Upload/Remoção de Imagem por Item ---------
+# Mantido para compatibilidade, mas a adição de imagem deve ser feita apenas na tela de criação (new).
 @app.post("/ship/<int:ship_id>/item/<int:item_id>/upload_image")
 def upload_item_image(ship_id: int, item_id: int):
-    file = request.files.get("image")
-    if not file or file.filename == "":
-        flash("Selecione um arquivo de imagem.", "error")
-        return redirect(url_for("detail", ship_id=ship_id))
-    if not allowed_file(file.filename):
-        flash("Formato inválido. Use png, jpg, jpeg, webp ou gif.", "error")
-        return redirect(url_for("detail", ship_id=ship_id))
-
-    # nome único
-    ext = file.filename.rsplit(".", 1)[1].lower()
-    fname = secure_filename(f"{uuid.uuid4().hex}.{ext}")
-    save_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-    file.save(save_path)
-
-    rel_path = f"uploads/{fname}"  # relativo a /static
-    with get_conn() as c:
-        c.execute("""UPDATE items SET image_path=? WHERE id=? AND ship_id=?""",
-                  (rel_path, item_id, ship_id))
-        c.commit()
-    flash("Imagem anexada ao item.", "success")
+    # Opcionalmente, você pode bloquear:
+    flash("Anexar imagem só é permitido durante a criação da checklist.", "error")
     return redirect(url_for("detail", ship_id=ship_id))
 
 @app.post("/ship/<int:ship_id>/item/<int:item_id>/remove_image")
